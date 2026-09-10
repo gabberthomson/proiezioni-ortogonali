@@ -10,6 +10,8 @@ type Edge = [number, number];
 type Mode = "front" | "top" | "side";
 type Shape = { name: string; short: string; vertices: V3[]; edges: Edge[]; faces: number[][]; mesh?: boolean };
 const FACE_COLORS:Record<Mode,string>={front:"#42a8ce",side:"#df5b61",top:"#f2a323"};
+// Metodo europeo: il profilo è osservato dal lato destro del triedro.
+const VIEW_VECTORS:Record<Mode,V3>={front:[0,0,1],side:[-1,0,0],top:[0,1,0]};
 
 const extrudedFaces = (n:number) => [
   [...Array(n)].map((_,i)=>n-1-i),
@@ -130,12 +132,11 @@ function normal(face:number[],v:V3[]):V3{
 
 function faceMix(face:number[],vertices:V3[]){
   const n=normal(face,vertices);
-  // Il colore di un piano conta solo dal lato da cui la faccia è visibile.
-  // Una componente negativa appartiene al retro della relativa proiezione:
-  // lì gli spigoli sono nascosti e la faccia non deve ricevere quel colore.
+  // Il colore di un piano conta solo dal lato scelto per quella proiezione.
+  // Frontale e orizzontale guardano lungo +Z e +Y; il profilo destro lungo -X.
   const raw:{mode:Mode;weight:number}[]=[
     {mode:"front",weight:Math.max(0,n[2])},
-    {mode:"side",weight:Math.max(0,n[0])},
+    {mode:"side",weight:Math.max(0,-n[0])},
     {mode:"top",weight:Math.max(0,n[1])},
   ];
   const total=raw.reduce((s,x)=>s+x.weight,0);
@@ -145,7 +146,7 @@ function faceMix(face:number[],vertices:V3[]){
 }
 
 function visibleEdgeSet(shape:Shape,vertices:V3[],mode:Mode){
-  const view:V3=mode==="front"?[0,0,1]:mode==="top"?[0,1,0]:[1,0,0];
+  const view=VIEW_VECTORS[mode];
   const result=new Set<string>();
   shape.faces.forEach(face=>{
     const n=normal(face,vertices);
@@ -172,7 +173,7 @@ function meshEdgesForView(shape:Shape,vertices:V3[],view:V3){
 }
 
 function ProjectionWire({shape,vertices,pts,mode,color="#176b87",width=2}:{shape:Shape,vertices:V3[],pts:number[][],mode:Mode,color?:string,width?:number}){
-  const view:V3=mode==="front"?[0,0,1]:mode==="top"?[0,1,0]:[1,0,0];
+  const view=VIEW_VECTORS[mode];
   if(shape.mesh){
     return <g>{meshEdgesForView(shape,vertices,view).map(({edge:[a,b],shown},i)=><line key={i} x1={pts[a][0]} y1={pts[a][1]} x2={pts[b][0]} y2={pts[b][1]} stroke={color} strokeWidth={shown?width:Math.max(1,width*.78)} strokeDasharray={shown?undefined:"7 6"} opacity={shown?1:.72} strokeLinecap="round"/>)}</g>;
   }
@@ -190,7 +191,7 @@ function ProjectionWire({shape,vertices,pts,mode,color="#176b87",width=2}:{shape
 const DEPTH_COMPONENT=96/(2*Math.SQRT2);
 // Direzione dell'osservatore implicita nella proiezione cavaliera.
 // Una faccia viene disegnata solo se la sua normale è rivolta verso l'osservatore.
-const CAVALIER_VIEW:V3=[DEPTH_COMPONENT/96,DEPTH_COMPONENT/96,1];
+const CAVALIER_VIEW:V3=[-DEPTH_COMPONENT/96,DEPTH_COMPONENT/96,1];
 const scenePoint=([x,y,z]:V3):number[]=>[445-x*96+z*DEPTH_COMPONENT,320-y*96+z*DEPTH_COMPONENT];
 const placeInTrihedron=(vertices:V3[])=>vertices.map(([x,y,z]):V3=>[1.42+x*.62,1.42+y*.62,1.35+z*.62]);
 const planePoints=(vertices:V3[],mode:Mode)=>vertices.map(([x,y,z])=>scenePoint(mode==="front"?[x,y,0]:mode==="side"?[0,y,z]:[x,0,z]));
