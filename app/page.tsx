@@ -56,6 +56,10 @@ function buildFeatureEdges(vertices:V3[],faces:number[][]){
 
 function parseStl(buffer:ArrayBuffer,fileName:string):Shape{
   const triangles:V3[][]=[];
+  // STL usa normalmente X verso destra, Y in profondità e Z verso l'alto.
+  // Nel triedro interno X positivo va invece verso sinistra: invertiamo X
+  // durante l'importazione, così il modello non appare specchiato a video.
+  const fromStl=([x,y,z]:V3):V3=>[-x,z,-y];
   const data=new DataView(buffer);
   const count=buffer.byteLength>=84?data.getUint32(80,true):0;
   const binary=count>0&&84+count*50<=buffer.byteLength;
@@ -65,7 +69,7 @@ function parseStl(buffer:ArrayBuffer,fileName:string):Shape{
       const start=84+i*50+12,tri:V3[]=[];
       for(let j=0;j<3;j++){
         const p=start+j*12,x=data.getFloat32(p,true),y=data.getFloat32(p+4,true),z=data.getFloat32(p+8,true);
-        tri.push([x,z,-y]); // STL: Z verticale; rotazione senza inversione delle normali
+        tri.push(fromStl([x,y,z]));
       }
       triangles.push(tri);
     }
@@ -73,7 +77,7 @@ function parseStl(buffer:ArrayBuffer,fileName:string):Shape{
     const text=new TextDecoder().decode(buffer),values:[number,number,number][]=[];
     const re=/vertex\s+([-+\d.eE]+)\s+([-+\d.eE]+)\s+([-+\d.eE]+)/g;
     let match:RegExpExecArray|null;
-    while((match=re.exec(text)))values.push([Number(match[1]),Number(match[3]),-Number(match[2])]);
+    while((match=re.exec(text)))values.push(fromStl([Number(match[1]),Number(match[2]),Number(match[3])]));
     if(values.length%3!==0||values.length===0)throw new Error("Il file non contiene una mesh STL valida.");
     if(values.length/3>6000)throw new Error("Il modello supera il limite di 6.000 triangoli.");
     for(let i=0;i<values.length;i+=3)triangles.push([values[i],values[i+1],values[i+2]]);
