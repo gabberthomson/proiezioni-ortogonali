@@ -280,7 +280,8 @@ export default function Home(){
   const [yaw,setYaw]=useState(0),[pitch,setPitch]=useState(0),[task,setTask]=useState(false);
   const drag=useRef<{x:number;y:number;yaw:number;pitch:number}|null>(null);
   const fileInput=useRef<HTMLInputElement|null>(null);
-  const shape=shapeKey==="stl"&&customShape?customShape:shapes[shapeKey],vertices=useMemo(()=>shape.vertices.map(v=>rotate(v,yaw,pitch)),[shape,yaw,pitch]);
+  const shape=shapeKey==="stl"&&customShape?customShape:shapes[shapeKey],stlYawOffset=shape.mesh?-90:0;
+  const vertices=useMemo(()=>shape.vertices.map(v=>rotate(v,yaw+stlYawOffset,pitch)),[shape,yaw,pitch,stlYawOffset]);
   const down=useCallback((e:React.PointerEvent<SVGSVGElement>)=>{drag.current={x:e.clientX,y:e.clientY,yaw,pitch};e.currentTarget.setPointerCapture(e.pointerId)},[yaw,pitch]);
   const move=useCallback((e:React.PointerEvent<SVGSVGElement>)=>{if(!drag.current)return;setYaw(drag.current.yaw+(e.clientX-drag.current.x)*.45);setPitch(Math.max(-70,Math.min(70,drag.current.pitch-(e.clientY-drag.current.y)*.35)))},[]);
   const importStl=async(e:React.ChangeEvent<HTMLInputElement>)=>{
