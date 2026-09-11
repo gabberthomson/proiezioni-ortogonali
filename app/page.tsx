@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { Box, RotateCcw, School, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { meshSegments, type ScreenPoint } from "@/lib/mesh-visibility";
 
 type V3 = [number, number, number];
 type Edge = [number, number];
@@ -174,7 +175,9 @@ function meshEdgesForView(shape:Shape,vertices:V3[],view:V3){
 function ProjectionWire({shape,vertices,pts,mode,color="#176b87",width=2}:{shape:Shape,vertices:V3[],pts:number[][],mode:Mode,color?:string,width?:number}){
   const view=VIEW_VECTORS[mode];
   if(shape.mesh){
-    return <g>{meshEdgesForView(shape,vertices,view).map(({edge:[a,b],shown},i)=><line key={i} x1={pts[a][0]} y1={pts[a][1]} x2={pts[b][0]} y2={pts[b][1]} stroke={color} strokeWidth={shown?width:Math.max(1,width*.78)} strokeDasharray={shown?undefined:"7 6"} opacity={shown?1:.72} strokeLinecap="round"/>)}</g>;
+    const projected=pts.map((p,i):ScreenPoint=>[p[0],p[1],dot(vertices[i],view)]);
+    const segments=meshSegments(projected,shape.faces,meshEdgesForView(shape,vertices,view).map(x=>x.edge));
+    return <g>{segments.map(({a,b,shown},i)=><line key={i} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke={color} strokeWidth={shown?width:Math.max(1,width*.78)} strokeDasharray={shown?undefined:"7 6"} opacity={shown?1:.72} strokeLinecap="butt"/>)}</g>;
   }
   const visible=visibleEdgeSet(shape,vertices,mode);
   return <g>{shape.edges.map(([a,b],i)=>{
@@ -196,14 +199,15 @@ const placeInTrihedron=(vertices:V3[])=>vertices.map(([x,y,z]):V3=>[1.42+x*.62,1
 const planePoints=(vertices:V3[],mode:Mode)=>vertices.map(([x,y,z])=>scenePoint(mode==="front"?[x,y,0]:mode==="side"?[0,y,z]:[x,0,z]));
 
 function PlaneScene({shape,vertices,onDown,onMove,onUp}:{shape:Shape,vertices:V3[],onDown:(e:React.PointerEvent<SVGSVGElement>)=>void,onMove:(e:React.PointerEvent<SVGSVGElement>)=>void,onUp:()=>void}){
+  const view=CAVALIER_VIEW;
   const placed=placeInTrihedron(vertices);
   const objectPts=placed.map(scenePoint);
   const front=planePoints(placed,"front"),side=planePoints(placed,"side"),top=planePoints(placed,"top");
   const faces=shape.faces.filter(face=>{
     const n=normal(face,vertices);
-    return n[0]*CAVALIER_VIEW[0]+n[1]*CAVALIER_VIEW[1]+n[2]*CAVALIER_VIEW[2]>.0001;
+    return dot(n,view)>.0001;
   }).sort((a,b)=>{
-    const depth=(f:number[])=>f.reduce((s,i)=>s+vertices[i][0]*CAVALIER_VIEW[0]+vertices[i][1]*CAVALIER_VIEW[1]+vertices[i][2]*CAVALIER_VIEW[2],0)/f.length;
+    const depth=(f:number[])=>f.reduce((s,i)=>s+dot(vertices[i],view),0)/f.length;
     return depth(a)-depth(b);
   });
   const mixes=faces.map(face=>faceMix(face,vertices));
@@ -218,7 +222,7 @@ function PlaneScene({shape,vertices,onDown,onMove,onUp}:{shape:Shape,vertices:V3
   const patterns=new Map<string,ReturnType<typeof faceMix>>();
   mixes.filter(m=>m.length>1).forEach(m=>{const key=mixKey(m);if(!patterns.has(key))patterns.set(key,m)});
   const constructionStep=shape.mesh?Math.max(1,Math.ceil(placed.length/24)):2;
-  const modelMeshEdges=shape.mesh?meshEdgesForView(shape,vertices,CAVALIER_VIEW).filter(x=>x.shown):[];
+  const modelMeshEdges=shape.mesh?meshSegments(objectPts.map((p,i):ScreenPoint=>[p[0],p[1],dot(vertices[i],view)]),shape.faces,meshEdgesForView(shape,vertices,view).map(x=>x.edge)).filter(x=>x.shown):[];
   const planes:{mode:Mode;corners:V3[];label:string;pts:number[][]}[]=[
     {mode:"front",label:"PIANO FRONTALE · PROSPETTO",corners:[[0,0,0],[3.5,0,0],[3.5,3.25,0],[0,3.25,0]],pts:front},
     {mode:"side",label:"PIANO LATERALE · PROFILO",corners:[[0,0,0],[0,3.25,0],[0,3.25,3.35],[0,0,3.35]],pts:side},
@@ -238,8 +242,8 @@ function PlaneScene({shape,vertices,onDown,onMove,onUp}:{shape:Shape,vertices:V3
     <g className="plane-projection front-projection"><ProjectionWire shape={shape} vertices={vertices} pts={front} mode="front" color={FACE_COLORS.front}/></g>
     <g className="plane-projection side-projection"><ProjectionWire shape={shape} vertices={vertices} pts={side} mode="side" color={FACE_COLORS.side}/></g>
     <g className="plane-projection top-projection"><ProjectionWire shape={shape} vertices={vertices} pts={top} mode="top" color={FACE_COLORS.top}/></g>
-    <g className={shape.mesh?"solid mesh-solid":"solid"}>{faces.map((face,i)=><polygon key={i} points={face.map(k=>objectPts[k].join(",")).join(" ")} fill={mixes[i].length===1?FACE_COLORS[mixes[i][0].mode]:`url(#face-stripes-${mixKey(mixes[i])})`}/>)}</g>
-    {shape.mesh&&<g className="mesh-outline">{modelMeshEdges.map(({edge:[a,b]},i)=><line key={i} x1={objectPts[a][0]} y1={objectPts[a][1]} x2={objectPts[b][0]} y2={objectPts[b][1]}/>)}</g>}
+    <g className={shape.mesh?"solid mesh-solid":"solid"}>{faces.map((face,i)=><polygon key={i} points={face.map(k=>objectPts[k].join(",")).join(" ")} fill={shape.mesh&&mixes[i].length===0?"#a8b4ba":mixes[i].length===1?FACE_COLORS[mixes[i][0].mode]:`url(#face-stripes-${mixKey(mixes[i])})`}/>)}</g>
+    {shape.mesh&&<g className="mesh-outline">{modelMeshEdges.map(({a,b},i)=><line key={i} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} style={{strokeLinecap:"butt"}}/>)}</g>}
   </svg>;
 }
 
