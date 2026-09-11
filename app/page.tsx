@@ -58,11 +58,12 @@ function buildFeatureEdges(vertices:V3[],faces:number[][]){
 
 function parseStl(buffer:ArrayBuffer,fileName:string):Shape{
   const triangles:V3[][]=[];
-  // STL usa normalmente X verso destra, Y in profondità e Z verso l'alto.
-  // Nel triedro interno X positivo va invece verso sinistra. Invertiamo X e
-  // anche la profondità: è una rotazione, non una riflessione; il solido
-  // mantiene così orientamento delle facce e normali.
-  const fromStl=([x,y,z]:V3):V3=>[-x,z,y];
+  // Convenzione di importazione: nell'STL Z resta verticale, mentre il piano
+  // XY non identifica quale lato sia il prospetto. Qui Y diventa la larghezza
+  // frontale e X la profondità, come nei solidi didattici usati nel sito.
+  // I due segni meno mantengono la trasformazione come rotazione (det = +1),
+  // quindi non specchiano il solido e conservano correttamente le normali.
+  const fromStl=([x,y,z]:V3):V3=>[-y,z,-x];
   const data=new DataView(buffer);
   const count=buffer.byteLength>=84?data.getUint32(80,true):0;
   const binary=count>0&&84+count*50<=buffer.byteLength;
